@@ -126,9 +126,76 @@ function islandora_collection_deletion_form_submit($form, &$form_state) {
     'file' => drupal_get_path('module', 'islandora_collection_manager') . '/management/DeleteCollection.inc',
   );
 
-  foreach ($pids_to_delete as $pid_to_delete) {
-    $batch['operations'][] = array('collection_manager_delete', array($pid_to_delete, $collection_pid));
+ /**
+  *
+  * FBA MODIFICATION BY NBYWELL on 12/03/2014 to remove any link-data
+  * that was created by the Object Linker functionality. This could
+  * be RDFs and entries in the datastreams of linked-to objects.
+  */
+  module_load_include('inc', 'islandora_content_model_forms', 'ObjectLinker');
+  if (variable_get('rdf_relationships', NULL)) {
+    // An unrelated rdf_relationships variable is
+    // present. This happens if the user loaded
+    // up an XML-form but never clicked submit.
+    variable_set('rdf_relationships', NULL);
   }
+
+  $content_model_pid_current = '';
+  $content_model_pid_previous = '';
+  $content_model_and_form_combination_previous_valid = false;
+  $pids_to_delete_count = 0;
+  
+  foreach ($pids_to_delete as $pid_to_delete) {
+    // Avoid unnecessary XML-form building by determining
+    // whether the content model (and therefore the form) for
+    // the previous PID is the same as for the current PID.
+    // Note that for object linking to work with regard to
+    // purging, each content model should only have one
+    // associated form. If this is not the case, the purge
+    // will go ahead, but any links created by the Object
+    // Linker will not be unwound.
+    $form_build_required = true;
+    $content_model_form_association_valid = true;
+    $content_model_pid_current = get_object_linker_content_model($pid_to_delete);
+    if (strlen($content_model_pid_current) > 0) {
+      if (!strcmp($content_model_pid_current, $content_model_pid_previous)) {
+        if ($content_model_and_form_combination_previous_valid) {
+          $form_build_required = false;
+        } else {
+          $content_model_form_association_valid = false;
+        }
+      }
+    } else {
+      $content_model_form_association_valid = false;
+    }
+
+    if ($form_build_required) {
+      $object_linker_form_name = get_object_linker_form_name($pid_to_delete, $content_model_pid_current);
+      if (strlen($object_linker_form_name) > 0) {
+        build_object_linker_form($object_linker_form_name);
+        $content_model_and_form_combination_previous_valid = true; 
+      } else {
+        $content_model_form_association_valid = false;
+      }
+    }
+    if ($content_model_form_association_valid) {
+      if (variable_get('rdf_relationships', NULL)) {
+        process_links_on_purge($pid_to_delete);
+      }
+    } else {
+      $content_model_and_form_combination_previous_valid = false; 
+    }
+
+    $content_model_pid_previous = $content_model_pid_current;
+
+    $batch['operations'][] = array('collection_manager_delete', array($pid_to_delete, $collection_pid));
+    $pids_to_delete_count += 1;
+  }
+
+  if (variable_get('rdf_relationships', NULL)) {
+    variable_set('rdf_relationships', NULL);
+  }
+
   batch_set($batch);
 }
 
