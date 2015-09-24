@@ -128,9 +128,15 @@ function islandora_collection_deletion_form_submit($form, &$form_state) {
 
  /**
   *
-  * FBA MODIFICATION BY NBYWELL on 12/03/2014 to remove any link-data
+  * FBA MODIFICATION BY NBYWELL on 20/10/2014 to process any link-data
   * that was created by the Object Linker functionality. This could
   * be RDFs and entries in the datastreams of linked-to objects.
+  * The higher level function process_links_on_purge is not called
+  * in this function because of the requirement to only load the
+  * XML-Form when necessary, so checking is carried out before the
+  * lower level function remove_links_on_purge is called. The $batch
+  * array is passed to the process_links_on_purge function because
+  * it may add operations to the batch queue.
   */
   module_load_include('inc', 'islandora_content_model_forms', 'ObjectLinker');
   if (variable_get('rdf_relationships', NULL)) {
@@ -180,7 +186,7 @@ function islandora_collection_deletion_form_submit($form, &$form_state) {
     }
     if ($content_model_form_association_valid) {
       if (variable_get('rdf_relationships', NULL)) {
-        process_links_on_purge($pid_to_delete);
+        remove_links_on_purge($batch, $pid_to_delete);
       }
     } else {
       $content_model_and_form_combination_previous_valid = false; 
